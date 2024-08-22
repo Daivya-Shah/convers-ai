@@ -1,7 +1,5 @@
 import React, { useState, useRef } from 'react';
-import Image from 'next/image';
 import { toast } from "@/app/components/ui/use-toast";
-import { text } from 'stream/consumers';
 import { useRouter } from 'next/navigation';
 
 
@@ -9,6 +7,19 @@ interface CreateFlashcardProps {
     deckName: string ; 
     userId: string;
 }
+
+const MAX_CHAR_LIMIT = 50000;
+const splitTextIntoChunks = (text: string, chunkSize: number): string[] => {
+    const chunks = [];
+    let currentIndex = 0;
+
+    while (currentIndex < text.length) {
+        chunks.push(text.slice(currentIndex, currentIndex + chunkSize));
+        currentIndex += chunkSize;
+    }
+
+    return chunks;
+};
 
 const CreateFlashcard = ({ deckName, userId }: CreateFlashcardProps) => {
     const [selectedInput, setSelectedInput] = useState<'link' | 'document' | 'text'>('link');
@@ -50,38 +61,107 @@ const CreateFlashcard = ({ deckName, userId }: CreateFlashcardProps) => {
      * Pass in context to OpenAI to generate a list of flashcard questions and answers.
      * Store it in the mongoDB for later retrieval. 
      */
-    const handleGenerateKeywords = async (input: File | string, deckName: string, userId: string) => {
+    const handleGenerateKeywords = async (input: string, deckName: string, userId: string) => {
         const formData = new FormData();
         setIsLoading2(true);
         
-        if (input instanceof File) {
-            formData.append('pdf', input);
-        } else {
-            formData.append('text', input);
-        }
+        /* formData.append('text', input);
         formData.append('deckName', deckName);
-        formData.append('userId', userId);
+        formData.append('userId', userId); */
+        
+        // KEEP TRACK AND  SET A LIMIT TO TO 200,000 CHARACTERS MAX
 
         try {
-            const response = await fetch('/api/generateKeywords', {
-                method: 'POST',
-                body: formData,
-            });
     
-            if (response.ok) {
-                toast({
-                    title: "Keywords Generated",
-                    description: "Keywords generated from the provided content.",
-                    variant: "default",
+            // set a limit to how mucch text can be processed at once
+            const chunks = splitTextIntoChunks(input, 50000);
+            let totalProcessedCharacters = 0;
+            const keywordsList: string[] = [];
+
+            // Generate Keywords using a for...of loop to respect the character limit and handle async calls sequentially
+            for (const chunk of chunks) {
+                // Ensure that the total processed characters do not exceed the limit
+                if (totalProcessedCharacters + chunk.length > MAX_CHAR_LIMIT) {
+                    break;  // Stop processing if adding this chunk exceeds the character limit
+                }
+
+                totalProcessedCharacters += chunk.length;
+
+                const chunkFormData = new FormData();
+                chunkFormData.append('text', chunk);
+
+                // Generate Keywords for each chunk
+                const keywordResponse = await fetch('/api/generateKeywords', {
+                    method: 'POST',
+                    body: chunkFormData,
                 });
-            } else {
-                throw new Error("Failed to generate keywords");
+
+                if (!keywordResponse.ok) {
+                    toast({
+                        title: "File too large",
+                        description: "Please use a file under 1,100 KB.",
+                        variant: "default",
+                    });
+                }
+
+                const { keywords } = await keywordResponse.json();
+                keywordsList.push(keywords);
             }
 
-            router.push('/dashboard/flashcards');
+            // Retrieve Relevant Documents from Pinecone
+            const documentResponse = await fetch('/api/retrieveDoc', {
+                method: 'POST',
+                body: JSON.stringify({ keywordsList }),
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            if (!documentResponse.ok) {
+                throw new Error("Failed to retrieve documents");
+            }
+            const { context } = await documentResponse.json();
+
+            // Pass the keywords to the flashcard generation backend
+            const flashcardResponse = await fetch('/api/generateFlashcards', {
+                method: 'POST',
+                body: JSON.stringify({ context  }),
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+           
+            if (!flashcardResponse.ok) {
+                toast({
+                    title: "File too large",
+                    description: "Please use a file under 1,100 KB.",
+                    variant: "default",
+                });
+            }
+
+            const { flashcards } = await flashcardResponse.json();
+
+            // Update Flashcards in Database
+            const updateResponse = await fetch('/api/updateFlashcards', {
+                method: 'POST',
+                body: JSON.stringify({ deckName, userId, flashcards }),
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (updateResponse.ok) {
+                toast({
+                    title: "Keywords and Flashcards Generated",
+                    description: "Keywords and flashcards generated and saved successfully.",
+                    variant: "default",
+                });
+                router.push('/dashboard/flashcards');
+            } else {
+                throw new Error("Failed to update flashcards in the database");
+            }
 
         } catch (error) {
-            console.error('Error generating keywords:', error);
+            console.error('Error generating Flashcards:', error);
             /* toast({
                 title: "Keyword Generation Failed",
                 description: "There was an error generating keywords from your content.",
@@ -113,7 +193,7 @@ const CreateFlashcard = ({ deckName, userId }: CreateFlashcardProps) => {
         }
     
         try {
-            const response = await fetch('/api/embed-pdf', {
+            const response = await fetch('/api/chunk-doc', {
                 method: 'POST',
                 body: formData,
             });
@@ -121,18 +201,41 @@ const CreateFlashcard = ({ deckName, userId }: CreateFlashcardProps) => {
             if (response.ok) {
                 console.log('Content uploaded and embedded successfully');
                 const data = await response.json();
-                const { extractedContent } = data;
+                const { extractedContent, chunks } = data;
                 console.log('Chunked Content:', extractedContent);
-    
-                toast({
-                    title: "Upload Successful",
-                    description: typeof input === 'string' 
-                        ? "Knowledge base updated with the provided text."
-                        : "Knowledge base updated. The AI is now equipped to handle queries about your uploaded document.",
-                    variant: "default",
-                });
 
-                setExtractedContent(extractedContent);
+                // Embed and store the chunks
+                try {
+                    const embedResponse = await fetch('/api/embed-chunks', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ chunks }),
+                    });
+    
+                    if (embedResponse.ok) {
+                        toast({
+                            title: "Upload Successful",
+                            description: typeof input === 'string' 
+                                ? "Knowledge base updated with the provided text."
+                                : "Knowledge base updated. The AI is now equipped to handle queries about your uploaded document.",
+                            variant: "default",
+                        });
+                        setExtractedContent(extractedContent);
+                    } else {
+                        toast({
+                            title: "File too large",
+                            description: "Please use a file under 1,100 KB.",
+                            variant: "default",
+                        });
+                    }
+                } catch (embedError) {
+                    console.error('Error embedding and storing content:', embedError);
+                    toast({
+                        title: "Embedding Failed",
+                        description: "There was an error embedding your content.",
+                        variant: "destructive",
+                    });
+                }
 
             } else {
                 throw new Error("Failed to upload content");
