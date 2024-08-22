@@ -34,7 +34,7 @@ export async function POST(req: Request) {
         }
 
         const openai = new OpenAI({
-            apiKey: process.env.OPENAI_API_KEY!,
+            apiKey: process.env.OPENAI_API_KEY,
         });
 
         const response = await openai.chat.completions.create({
