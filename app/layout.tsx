@@ -18,7 +18,7 @@ interface RootLayoutProps {
 
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
-    <ClerkProvider publishableKey='pk_test_bW9kZXN0LXBob2VuaXgtNzUuY2xlcmsuYWNjb3VudHMuZGV2JA'>
+    <ClerkProvider publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}>
       <html lang="en" className={inter.className}>
         <body className="bg-white flex flex-col gap-4">
           {children}
