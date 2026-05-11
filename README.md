@@ -133,18 +133,3 @@ app/
   scripts/          # One-off scripts (e.g. pre-embedding docs into Pinecone)
   types/            # Shared TypeScript types
 public/             # Static assets
-```
-
----
-
-## Roadmap
-
-- [ ] Per-conversation URL routes
-- [ ] Optimized database structure
-- [ ] Update chat context automatically after PDF upload
-- [ ] Tab for managing uploaded documents and removing specific context
-- [ ] Google Analytics
-- [ ] Fine-tune model for conversation prediction
-- [ ] Fix bug with new chat creation after the 10th conversation
-- [ ] Codebase refactor and component cleanup
-
