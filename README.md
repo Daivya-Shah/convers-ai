@@ -133,3 +133,4 @@ app/
   scripts/          # One-off scripts (e.g. pre-embedding docs into Pinecone)
   types/            # Shared TypeScript types
 public/             # Static assets
+```
