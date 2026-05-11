@@ -1,5 +1,3 @@
-# Convers-AI
-
 ## TODO:
 - [ ] Custom conversation route for each conversation
 - [ ] Optimized database structure
@@ -12,6 +10,8 @@
 - [ ] Google Analytic
 - [ ] fine tune model for conversation prediction
 - [ ] fix issue with 'newChat' not creating new conversation correctly after the 10th conversation
+
+# Convers-AI
 
 Convers-AI is an AI-powered learning platform that lets you chat with your documents and generate flashcard decks from your own content. Upload a PDF, paste some notes, or drop in a link and the app will use that as context for everything the AI says.
 
